@@ -1,0 +1,236 @@
+:root {
+  --bg: #f5f7fb;
+  --surface: #ffffff;
+  --surface-alt: #eef3ff;
+  --primary: #2f6fed;
+  --primary-dark: #204db3;
+  --primary-soft: rgba(47, 111, 237, 0.12);
+  --success: #1ea97c;
+  --warning: #f4b740;
+  --danger: #e14d5b;
+  --text: #172033;
+  --text-muted: #5f6b7a;
+  --border: #e5eaf3;
+  --shadow: 0 12px 28px rgba(23, 32, 51, 0.08);
+  --radius: 18px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  min-height: 100%;
+  min-height: 100vh;
+  font-family: Inter, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  min-height: 100vh;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.app-shell {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
+}
+
+.app-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--primary);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 14px;
+  gap: 4px;
+}
+
+.app-sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  font-size: 19px;
+  letter-spacing: -0.01em;
+  padding: 6px 10px 22px 10px;
+}
+
+.app-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  color: rgba(255, 255, 255, 0.72);
+  background: transparent;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.app-nav-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.app-nav-item.active {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+.app-sidebar-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+  margin-top: 8px;
+  padding-top: 10px;
+}
+
+.app-sidebar-user {
+  padding: 0 12px 8px 12px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.app-sidebar-user-name {
+  font-weight: 700;
+  color: #fff;
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-content {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.app-bottom-nav {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .app-sidebar {
+    display: none;
+  }
+
+  .app-content {
+    padding: 16px 16px 90px 16px;
+  }
+
+  .app-bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--primary);
+    justify-content: space-around;
+    padding: 8px 4px calc(10px + env(safe-area-inset-bottom, 0px)) 4px;
+    z-index: 40;
+    box-shadow: 0 -4px 14px rgba(0, 0, 0, 0.12);
+  }
+
+  .app-bottom-nav button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 4px 6px;
+    border: none;
+    background: none;
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .app-bottom-nav button.active {
+    color: #fff;
+  }
+}
+
+.pos-product-card {
+  background: #fff;
+  border: 1px solid #dfe7f6;
+  border-radius: 16px;
+  padding: 0;
+  overflow: hidden;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(23, 32, 51, 0.04);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.pos-product-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 24px rgba(47, 111, 237, 0.18);
+  border-color: var(--primary);
+}
+
+.pos-product-card:active {
+  transform: scale(0.97);
+  box-shadow: 0 4px 10px rgba(23, 32, 51, 0.08);
+}
+
+.pos-product-card:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  border-color: #e5eaf3;
+  transform: none;
+  box-shadow: 0 8px 18px rgba(23, 32, 51, 0.04);
+}
+
+@keyframes cart-line-in {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.cart-line-enter {
+  animation: cart-line-in 0.22s ease;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .receipt-print,
+  .receipt-print * {
+    visibility: visible;
+  }
+
+  .receipt-print {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    box-shadow: none;
+    border-radius: 0;
+  }
+
+  .receipt-print-actions {
+    display: none !important;
+  }
+}
