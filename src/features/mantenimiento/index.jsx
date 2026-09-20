@@ -11,6 +11,7 @@ const TABS = [
 const DOC_TYPES = [
   { id: 'boleta', label: 'Boleta' },
   { id: 'factura', label: 'Factura' },
+  { id: 'ticket', label: 'Ticket' },
 ]
 
 function docLabel(docType) {
@@ -39,6 +40,7 @@ function fromSettingsRow(row) {
     lowStockAlerts: row.low_stock_alerts,
     receiptMessage: row.receipt_message || '',
     taxEnabled: row.tax_enabled,
+    igvRate: row.igv_rate,
   }
 }
 
@@ -52,6 +54,7 @@ function toSettingsRow(settings) {
     low_stock_alerts: settings.lowStockAlerts,
     receipt_message: settings.receiptMessage,
     tax_enabled: settings.taxEnabled,
+    igv_rate: Number(settings.igvRate) || 0,
   }
 }
 
@@ -156,8 +159,11 @@ function NegocioTab() {
           <SettingRow label="Moneda">
             <select value={settings.currency} onChange={(event) => updateField('currency', event.target.value)} style={{ width: '100%', padding: '9px 10px', borderRadius: 9, border: '1px solid #dfe7f6' }}><option value="PEN">Soles (PEN)</option><option value="USD">Dólares (USD)</option></select>
           </SettingRow>
-          <SettingRow label="Impuestos" description="Se activará junto con la facturación electrónica.">
+          <SettingRow label="Impuestos" description="Si está activo, el POS emite boleta/factura con IGV desglosado. Si está apagado, cada venta sale como ticket sin valor tributario, solo para control interno.">
             <input type="checkbox" checked={settings.taxEnabled} onChange={(event) => updateField('taxEnabled', event.target.checked)} style={{ width: 18, height: 18, accentColor: '#2f6fed' }} />
+          </SettingRow>
+          <SettingRow label="Tasa de IGV (%)" description="Solo se aplica cuando Impuestos está activo.">
+            <input type="number" min="0" step="0.01" value={settings.igvRate} onChange={(event) => updateField('igvRate', event.target.value)} style={{ width: '100%', padding: '9px 10px', borderRadius: 9, border: '1px solid #dfe7f6' }} />
           </SettingRow>
         </div>
       </div>

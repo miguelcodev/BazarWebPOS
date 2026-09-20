@@ -208,7 +208,27 @@ function ProductForm({ initial, onCancel, onSave, saving, categoryOptions }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 18 }}>
           <div>
             <label style={{ display: 'block', marginBottom: 6, fontWeight: 600 }}>Stock actual ({unitLabel(form.unit)})</label>
-            <input type="number" value={form.stock} onChange={setField('stock')} placeholder="0" style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #dfe7f6' }} />
+            <input
+              type="number"
+              value={form.stock}
+              onChange={setField('stock')}
+              placeholder="0"
+              disabled={!!form.id}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                borderRadius: 10,
+                border: '1px solid #dfe7f6',
+                background: form.id ? '#f3f5f9' : '#fff',
+                color: form.id ? '#5f6b7a' : 'inherit',
+                cursor: form.id ? 'not-allowed' : 'text',
+              }}
+            />
+            {form.id && (
+              <div style={{ color: '#5f6b7a', fontSize: 11.5, marginTop: 4 }}>
+                El stock se ajusta desde Inventario para quedar registrado como movimiento.
+              </div>
+            )}
           </div>
           <div>
             <label style={{ display: 'block', marginBottom: 6, fontWeight: 600 }}>Stock mínimo</label>

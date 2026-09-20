@@ -13,6 +13,10 @@ dist-ssr
 *.local
 .env
 
+# Migraciones SQL locales para Supabase (se aplican a mano en el SQL Editor,
+# no se versionan en el repo)
+supabase-*.sql
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

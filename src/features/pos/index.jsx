@@ -30,8 +30,14 @@ const DOC_TYPES = [
   { id: 'factura', label: 'Factura' },
 ]
 
+const DOC_TYPE_LABELS = {
+  boleta: 'Boleta',
+  factura: 'Factura',
+  ticket: 'Ticket',
+}
+
 function docLabel(docType) {
-  return DOC_TYPES.find((d) => d.id === docType)?.label || docType
+  return DOC_TYPE_LABELS[docType] || docType
 }
 
 function fmt(value) {
@@ -61,6 +67,8 @@ function saleDetailFromRow(row, businessSettings) {
     docType: row.doc_type,
     docSeries: row.doc_series,
     docNumber: row.doc_number,
+    subtotal: row.subtotal,
+    igv: row.igv,
     business: businessSettings,
     isHistory: true,
   }
@@ -95,7 +103,7 @@ export default function PosModule() {
 
     let request = supabase
       .from('sales')
-      .select('id, created_at, payment_method, total, cash_received, change, doc_type, doc_series, doc_number, customers(name), sale_items(product_name, qty, unit_price)')
+      .select('id, created_at, payment_method, total, cash_received, change, doc_type, doc_series, doc_number, subtotal, igv, customers(name), sale_items(product_name, qty, unit_price)')
 
     if (dateFrom) request = request.gte('created_at', `${dateFrom}T00:00:00`)
     if (dateTo) request = request.lte('created_at', `${dateTo}T23:59:59`)
@@ -233,7 +241,7 @@ export default function PosModule() {
 
     const payload = {
       customer_id: customerId === 'generic' ? null : customerId,
-      doc_type: docType,
+      doc_type: businessSettings?.tax_enabled ? docType : 'ticket',
       payment_method: payment,
       total,
       cash_received: payment === 'efectivo' ? received : null,
@@ -267,6 +275,8 @@ export default function PosModule() {
       docType: sale.doc_type,
       docSeries: sale.doc_series,
       docNumber: sale.doc_number,
+      subtotal: sale.subtotal,
+      igv: sale.igv,
       business: businessSettings,
       isHistory: false,
     })
@@ -495,14 +505,16 @@ export default function PosModule() {
           </select>
         </div>
 
-        <div>
-          <label style={{ display: 'block', marginBottom: 6, fontWeight: 600 }}>Tipo de comprobante</label>
-          <select value={docType} onChange={(event) => setDocType(event.target.value)} style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #dfe7f6' }}>
-            {DOC_TYPES.map((type) => (
-              <option key={type.id} value={type.id}>{type.label}</option>
-            ))}
-          </select>
-        </div>
+        {businessSettings?.tax_enabled && (
+          <div>
+            <label style={{ display: 'block', marginBottom: 6, fontWeight: 600 }}>Tipo de comprobante</label>
+            <select value={docType} onChange={(event) => setDocType(event.target.value)} style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #dfe7f6' }}>
+              {DOC_TYPES.map((type) => (
+                <option key={type.id} value={type.id}>{type.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div>
           <label style={{ display: 'block', marginBottom: 6, fontWeight: 600 }}>Método de pago</label>
@@ -610,11 +622,17 @@ export default function PosModule() {
               </div>
             )}
 
-            <div style={{ textAlign: 'center', fontWeight: 800, fontSize: 13, marginBottom: 10 }}>
+            <div style={{ textAlign: 'center', fontWeight: 800, fontSize: 13, marginBottom: lastReceipt.docType === 'ticket' ? 2 : 10 }}>
               {lastReceipt.docNumber
                 ? `${docLabel(lastReceipt.docType).toUpperCase()} ${lastReceipt.docSeries}-${String(lastReceipt.docNumber).padStart(6, '0')}`
                 : 'Sin comprobante'}
             </div>
+
+            {lastReceipt.docType === 'ticket' && (
+              <div style={{ textAlign: 'center', color: '#5f6b7a', fontSize: 11, marginBottom: 10 }}>
+                Documento sin valor tributario — solo control interno
+              </div>
+            )}
 
             <div style={{ color: '#5f6b7a', fontSize: 13, marginBottom: 10 }}>
               {lastReceipt.customerName} · {new Date(lastReceipt.date).toLocaleString('es-PE')}
@@ -629,7 +647,20 @@ export default function PosModule() {
               ))}
             </div>
 
-            <div style={{ borderTop: '1px solid #e5eaf3', display: 'flex', justifyContent: 'space-between', paddingTop: 10 }}>
+            {lastReceipt.igv > 0 && (
+              <div style={{ borderTop: '1px solid #e5eaf3', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: '#5f6b7a' }}>
+                  <span>Op. gravada</span>
+                  <span>{fmt(lastReceipt.subtotal)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: '#5f6b7a' }}>
+                  <span>IGV ({Math.round((lastReceipt.igv / lastReceipt.subtotal) * 100)}%)</span>
+                  <span>{fmt(lastReceipt.igv)}</span>
+                </div>
+              </div>
+            )}
+
+            <div style={{ borderTop: lastReceipt.igv > 0 ? 'none' : '1px solid #e5eaf3', display: 'flex', justifyContent: 'space-between', paddingTop: lastReceipt.igv > 0 ? 4 : 10 }}>
               <span style={{ fontWeight: 700 }}>Total</span>
               <span style={{ fontWeight: 800 }}>{fmt(lastReceipt.total)}</span>
             </div>
