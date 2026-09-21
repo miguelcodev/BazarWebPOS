@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
+  Ban,
   Barcode,
   Check,
   Eye,
@@ -17,6 +19,7 @@ import {
 import { supabase } from '../../lib/supabase'
 import { unitShort, fromProductRow } from '../../lib/products'
 import { Thumb } from '../../components/Thumb'
+import logoBazar from '../../assets/logo_bazar_print.png'
 
 const PAYMENTS = [
   { id: 'efectivo', label: 'Efectivo' },
@@ -55,6 +58,14 @@ const PAYMENT_LABELS = {
   plin: 'Plin',
 }
 
+const VOID_REASONS = [
+  { id: 'pago_incompleto', label: 'Pago incompleto' },
+  { id: 'devolucion', label: 'Devolución del cliente' },
+  { id: 'error_cobro', label: 'Error de cobro' },
+  { id: 'producto_incorrecto', label: 'Producto o cantidad incorrecta' },
+  { id: 'otro', label: 'Otro' },
+]
+
 function saleDetailFromRow(row, businessSettings) {
   return {
     date: row.created_at,
@@ -70,8 +81,71 @@ function saleDetailFromRow(row, businessSettings) {
     subtotal: row.subtotal,
     igv: row.igv,
     business: businessSettings,
+    voidedAt: row.voided_at,
+    voidReason: row.void_reason,
+    voidedByName: row.voided_by_user?.name || '',
     isHistory: true,
   }
+}
+
+function VoidSaleModal({ sale, onCancel, onConfirm, saving, error }) {
+  const [reasonId, setReasonId] = useState('pago_incompleto')
+  const [customReason, setCustomReason] = useState('')
+
+  const finalReason = reasonId === 'otro' ? customReason.trim() : VOID_REASONS.find((r) => r.id === reasonId)?.label || ''
+  const canConfirm = finalReason !== '' && !saving
+
+  return (
+    <div onClick={onCancel} style={{ position: 'fixed', inset: 0, background: 'rgba(23,32,51,0.4)', display: 'grid', placeItems: 'center', padding: 20, zIndex: 60 }}>
+      <div onClick={(event) => event.stopPropagation()} style={{ width: '100%', maxWidth: 380, background: '#fff', borderRadius: 18, padding: 20 }}>
+        <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Anular venta</div>
+        <div style={{ color: '#5f6b7a', fontSize: 13, marginBottom: 16 }}>
+          {sale.doc_number ? `${docLabel(sale.doc_type)} ${sale.doc_series}-${String(sale.doc_number).padStart(6, '0')}` : 'Venta'} · {fmt(sale.total)}
+        </div>
+
+        <label style={{ display: 'block', marginBottom: 6, fontWeight: 600 }}>Motivo</label>
+        <select value={reasonId} onChange={(event) => setReasonId(event.target.value)} style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #dfe7f6', marginBottom: 10 }}>
+          {VOID_REASONS.map((reason) => (
+            <option key={reason.id} value={reason.id}>{reason.label}</option>
+          ))}
+        </select>
+
+        {reasonId === 'otro' && (
+          <input
+            value={customReason}
+            onChange={(event) => setCustomReason(event.target.value)}
+            placeholder="Especifica el motivo"
+            style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #dfe7f6', marginBottom: 10 }}
+          />
+        )}
+
+        {error && <div style={{ color: '#e14d5b', fontSize: 12.5, marginBottom: 10 }}>{error}</div>}
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+          <button type="button" onClick={onCancel} style={{ flex: 1, border: '1px solid #dfe7f6', background: '#fff', borderRadius: 10, padding: '10px 12px', fontWeight: 700, cursor: 'pointer' }}>
+            Cancelar
+          </button>
+          <button
+            type="button"
+            disabled={!canConfirm}
+            onClick={() => onConfirm(finalReason)}
+            style={{
+              flex: 1,
+              border: 'none',
+              background: canConfirm ? '#e14d5b' : '#dfe7f6',
+              color: canConfirm ? '#fff' : '#5f6b7a',
+              borderRadius: 10,
+              padding: '10px 12px',
+              fontWeight: 700,
+              cursor: canConfirm ? 'pointer' : 'not-allowed',
+            }}
+          >
+            {saving ? 'Anulando…' : 'Confirmar anulación'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default function PosModule() {
@@ -95,6 +169,10 @@ export default function PosModule() {
   const [historyQuery, setHistoryQuery] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [canVoidSales, setCanVoidSales] = useState(false)
+  const [voidingSale, setVoidingSale] = useState(null)
+  const [voidSaving, setVoidSaving] = useState(false)
+  const [voidError, setVoidError] = useState('')
 
   useEffect(() => {
     if (!showHistory) return
@@ -103,7 +181,7 @@ export default function PosModule() {
 
     let request = supabase
       .from('sales')
-      .select('id, created_at, payment_method, total, cash_received, change, doc_type, doc_series, doc_number, subtotal, igv, customers(name), sale_items(product_name, qty, unit_price)')
+      .select('id, created_at, payment_method, total, cash_received, change, doc_type, doc_series, doc_number, subtotal, igv, voided_at, void_reason, voided_by_user:app_users!sales_voided_by_fkey(name), customers(name), sale_items(product_name, qty, unit_price)')
 
     if (dateFrom) request = request.gte('created_at', `${dateFrom}T00:00:00`)
     if (dateTo) request = request.lte('created_at', `${dateTo}T23:59:59`)
@@ -150,13 +228,15 @@ export default function PosModule() {
       supabase.from('products').select('*').order('name'),
       supabase.from('customers').select('id, name').order('name'),
       supabase.from('business_settings').select('*').eq('id', 1).single(),
-    ]).then(([productsRes, customersRes, businessRes]) => {
+      supabase.rpc('has_permission', { module: 'anular_ventas' }),
+    ]).then(([productsRes, customersRes, businessRes, canVoidRes]) => {
       if (!active) return
       if (productsRes.error) setError(productsRes.error.message)
       else setProducts((productsRes.data || []).map(fromProductRow))
       if (customersRes.error) setError(customersRes.error.message)
       else setCustomers(customersRes.data || [])
       if (!businessRes.error) setBusinessSettings(businessRes.data || null)
+      if (!canVoidRes.error) setCanVoidSales(!!canVoidRes.data)
       setLoading(false)
     })
 
@@ -288,6 +368,32 @@ export default function PosModule() {
     setCharging(false)
   }
 
+  async function handleVoidSale(reason) {
+    if (!voidingSale) return
+
+    setVoidSaving(true)
+    setVoidError('')
+
+    const { data: voided, error: voidRpcError } = await supabase.rpc('void_sale', {
+      payload: { sale_id: voidingSale.id, reason },
+    })
+
+    setVoidSaving(false)
+
+    if (voidRpcError) {
+      setVoidError(voidRpcError.message)
+      return
+    }
+
+    setHistory((current) => current.map((sale) => (
+      sale.id === voidingSale.id
+        ? { ...sale, voided_at: voided.voided_at, void_reason: voided.void_reason }
+        : sale
+    )))
+    await loadProducts()
+    setVoidingSale(null)
+  }
+
   return (
     <section style={{ display: 'grid', gap: 18 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -356,8 +462,9 @@ export default function PosModule() {
 
                 {!historyLoading && filteredHistory.map((sale) => {
                   const unitCount = (sale.sale_items || []).reduce((sum, item) => sum + item.qty, 0)
+                  const voided = !!sale.voided_at
                   return (
-                    <tr key={sale.id} style={{ borderTop: '1px solid #edf1f7' }}>
+                    <tr key={sale.id} style={{ borderTop: '1px solid #edf1f7', opacity: voided ? 0.6 : 1 }}>
                       <td style={{ padding: '14px 16px', color: '#5f6b7a' }}>{new Date(sale.created_at).toLocaleString('es-PE')}</td>
                       <td style={{ padding: '14px 16px' }}>
                         {sale.doc_number ? (
@@ -370,19 +477,37 @@ export default function PosModule() {
                         ) : (
                           <span style={{ color: '#5f6b7a', fontSize: 12.5 }}>Sin comprobante</span>
                         )}
+                        {voided && (
+                          <div style={{ marginTop: 4 }}>
+                            <span style={{ background: '#fff1f2', color: '#c93d4e', borderRadius: 999, padding: '3px 8px', fontSize: 10.5, fontWeight: 700 }}>
+                              Anulada
+                            </span>
+                          </div>
+                        )}
                       </td>
                       <td style={{ padding: '14px 16px', fontWeight: 700 }}>{sale.customers?.name || 'Cliente genérico'}</td>
                       <td style={{ padding: '14px 16px' }}>{PAYMENT_LABELS[sale.payment_method] || sale.payment_method}</td>
                       <td style={{ padding: '14px 16px', color: '#5f6b7a' }}>{unitCount} und.</td>
-                      <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 800 }}>{fmt(sale.total)}</td>
+                      <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 800, textDecoration: voided ? 'line-through' : 'none' }}>{fmt(sale.total)}</td>
                       <td style={{ padding: '14px 16px', textAlign: 'right' }}>
-                        <button
-                          type="button"
-                          onClick={() => setLastReceipt(saleDetailFromRow(sale, businessSettings))}
-                          style={{ border: '1px solid #dfe7f6', background: '#fff', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: 12.5 }}
-                        >
-                          <Eye size={13} /> Ver detalle
-                        </button>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+                          <button
+                            type="button"
+                            onClick={() => setLastReceipt(saleDetailFromRow(sale, businessSettings))}
+                            style={{ border: '1px solid #dfe7f6', background: '#fff', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: 12.5 }}
+                          >
+                            <Eye size={13} /> Ver detalle
+                          </button>
+                          {canVoidSales && !voided && (
+                            <button
+                              type="button"
+                              onClick={() => setVoidingSale(sale)}
+                              style={{ border: '1px solid #f5d2d7', background: '#fff', color: '#d9534f', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: 12.5 }}
+                            >
+                              <Ban size={13} /> Anular
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   )
@@ -591,9 +716,10 @@ export default function PosModule() {
     </div>
       )}
 
-      {lastReceipt && (
+      {lastReceipt && createPortal(
         <div
           onClick={() => setLastReceipt(null)}
+          className="receipt-print-backdrop"
           style={{
             position: 'fixed',
             inset: 0,
@@ -601,6 +727,7 @@ export default function PosModule() {
             display: 'grid',
             placeItems: 'center',
             padding: 20,
+            zIndex: 100,
           }}
         >
           <div onClick={(event) => event.stopPropagation()} className="receipt-print" style={{ width: '100%', maxWidth: 420, background: '#fff', borderRadius: 18, padding: 20, boxShadow: '0 18px 40px rgba(23,32,51,0.15)' }}>
@@ -611,6 +738,10 @@ export default function PosModule() {
               <button type="button" onClick={() => setLastReceipt(null)} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}>
                 <X size={16} />
               </button>
+            </div>
+
+            <div style={{ textAlign: 'center', marginBottom: 8 }}>
+              <img src={logoBazar} alt="" style={{ height: 52, width: 'auto', objectFit: 'contain' }} />
             </div>
 
             {lastReceipt.business && (
@@ -634,15 +765,34 @@ export default function PosModule() {
               </div>
             )}
 
+            {lastReceipt.voidedAt && (
+              <div style={{ background: '#fff1f2', border: '1px solid #f5d2d7', borderRadius: 10, padding: '10px 12px', marginBottom: 10, textAlign: 'center' }}>
+                <div style={{ color: '#c93d4e', fontWeight: 800, fontSize: 13 }}>ANULADA</div>
+                <div style={{ color: '#c93d4e', fontSize: 11.5, marginTop: 2 }}>
+                  {new Date(lastReceipt.voidedAt).toLocaleString('es-PE')} · Motivo: {lastReceipt.voidReason}
+                  {lastReceipt.voidedByName && ` · Autorizó: ${lastReceipt.voidedByName}`}
+                </div>
+              </div>
+            )}
+
             <div style={{ color: '#5f6b7a', fontSize: 13, marginBottom: 10 }}>
               {lastReceipt.customerName} · {new Date(lastReceipt.date).toLocaleString('es-PE')}
             </div>
 
+            <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 62px 72px', gap: 4, fontSize: 10.5, color: '#5f6b7a', fontWeight: 700, borderBottom: '1px solid #e5eaf3', paddingBottom: 4, marginBottom: 4 }}>
+              <span>Cant.</span>
+              <span>Descripción</span>
+              <span style={{ textAlign: 'right' }}>P. Unit.</span>
+              <span style={{ textAlign: 'right' }}>Importe</span>
+            </div>
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
               {lastReceipt.items.map((item, index) => (
-                <div key={`${item.name}-${index}`} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                  <span>{item.qty}× {item.name}</span>
-                  <span style={{ fontWeight: 700 }}>{fmt(item.qty * item.price)}</span>
+                <div key={`${item.name}-${index}`} style={{ display: 'grid', gridTemplateColumns: '28px 1fr 62px 72px', gap: 4, fontSize: 12.5 }}>
+                  <span>{item.qty}</span>
+                  <span>{item.name}</span>
+                  <span style={{ textAlign: 'right', color: '#5f6b7a' }}>{fmt(item.price)}</span>
+                  <span style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(item.qty * item.price)}</span>
                 </div>
               ))}
             </div>
@@ -679,15 +829,28 @@ export default function PosModule() {
             )}
 
             <div className="receipt-print-actions" style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-              <button type="button" onClick={() => window.print()} style={{ flex: 1, border: '1px solid #dfe7f6', background: '#fff', borderRadius: 10, padding: '12px 16px', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                <Printer size={16} /> Imprimir / PDF
-              </button>
+              {!lastReceipt.voidedAt && (
+                <button type="button" onClick={() => window.print()} style={{ flex: 1, border: '1px solid #dfe7f6', background: '#fff', borderRadius: 10, padding: '12px 16px', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <Printer size={16} /> Imprimir / PDF
+                </button>
+              )}
               <button type="button" onClick={() => setLastReceipt(null)} style={{ flex: 1, border: 'none', background: '#2f6fed', color: '#fff', borderRadius: 10, padding: '12px 16px', fontWeight: 800, cursor: 'pointer' }}>
                 {lastReceipt.isHistory ? 'Cerrar' : 'Nueva venta'}
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
+      )}
+
+      {voidingSale && (
+        <VoidSaleModal
+          sale={voidingSale}
+          saving={voidSaving}
+          error={voidError}
+          onCancel={() => { setVoidingSale(null); setVoidError('') }}
+          onConfirm={handleVoidSale}
+        />
       )}
     </section>
   )

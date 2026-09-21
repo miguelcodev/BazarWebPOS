@@ -28,7 +28,8 @@ export default function DashboardModule() {
       supabase
         .from('sales')
         .select('id, total, created_at, sale_items(product_id, product_name, qty)')
-        .gte('created_at', cutoff.toISOString()),
+        .gte('created_at', cutoff.toISOString())
+        .is('voided_at', null),
     ]).then(([productsRes, salesRes]) => {
       if (!active) return
       if (productsRes.error) setError(productsRes.error.message)

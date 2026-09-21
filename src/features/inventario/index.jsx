@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowDownCircle, ArrowUpCircle, History, X } from 'lucide-react'
+import { ArrowDownCircle, ArrowUpCircle, History, Search, X } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { unitShort, fromProductRow } from '../../lib/products'
 
@@ -10,6 +10,7 @@ const MOVEMENT_LABELS = {
   salida: 'Salida manual',
   ajuste: 'Ajuste',
   inicial: 'Stock inicial',
+  anulacion: 'Anulación de venta',
 }
 
 function MovementsModal({ product, movements, loading, error, onClose }) {
@@ -165,6 +166,8 @@ export default function InventarioModule() {
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [query, setQuery] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('')
   const [adjusting, setAdjusting] = useState(null)
   const [saving, setSaving] = useState(false)
   const [viewingMovements, setViewingMovements] = useState(null)
@@ -191,10 +194,19 @@ export default function InventarioModule() {
     }
   }, [])
 
-  const sorted = useMemo(
-    () => [...products].sort((a, b) => (a.stock <= a.minStock ? -1 : 1) - (b.stock <= b.minStock ? -1 : 1)),
+  const categories = useMemo(
+    () => [...new Set(products.map((product) => product.category).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
     [products],
   )
+
+  const sorted = useMemo(() => {
+    const term = query.trim().toLowerCase()
+
+    return products
+      .filter((product) => !term || product.name.toLowerCase().includes(term))
+      .filter((product) => !categoryFilter || product.category === categoryFilter)
+      .sort((a, b) => (a.stock <= a.minStock ? -1 : 1) - (b.stock <= b.minStock ? -1 : 1))
+  }, [products, query, categoryFilter])
 
   async function handleAdjust(productId, delta, type) {
     setSaving(true)
@@ -242,6 +254,28 @@ export default function InventarioModule() {
   return (
     <section style={{ display: 'grid', gap: 18 }}>
       {error && <div style={{ color: '#e14d5b', fontSize: 13 }}>{error}</div>}
+
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
+          <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#5f6b7a' }} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Buscar por nombre…"
+            style={{ width: '100%', padding: '10px 12px 10px 34px', borderRadius: 10, border: '1px solid #dfe7f6' }}
+          />
+        </div>
+        <select
+          value={categoryFilter}
+          onChange={(event) => setCategoryFilter(event.target.value)}
+          style={{ padding: '10px 12px', borderRadius: 10, border: '1px solid #dfe7f6', minWidth: 200 }}
+        >
+          <option value="">Todas las categorías</option>
+          {categories.map((category) => (
+            <option key={category} value={category}>{category}</option>
+          ))}
+        </select>
+      </div>
 
       <div
         style={{
@@ -335,6 +369,12 @@ export default function InventarioModule() {
                 </tr>
               )
             })}
+
+            {!loading && sorted.length === 0 && (
+              <tr>
+                <td colSpan={6} style={{ textAlign: 'center', padding: 30, color: '#5f6b7a' }}>No se encontraron productos.</td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

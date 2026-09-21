@@ -42,6 +42,7 @@ export default function ReportesModule() {
         .from('sales')
         .select('id, total, payment_method, created_at, sale_items(product_name, qty)')
         .gte('created_at', cutoff.toISOString())
+        .is('voided_at', null)
         .order('created_at'),
       supabase.from('products').select('*').order('name'),
     ]).then(([salesRes, productsRes]) => {

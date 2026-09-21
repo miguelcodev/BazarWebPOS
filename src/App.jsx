@@ -90,7 +90,7 @@ function App() {
     const todayStr = now.toISOString().slice(0, 10)
 
     Promise.all([
-      supabase.from('sales').select('total, created_at').gte('created_at', monthStartIso),
+      supabase.from('sales').select('total, created_at').gte('created_at', monthStartIso).is('voided_at', null),
       supabase.from('products').select('stock, min_stock'),
       supabase.from('customers').select('id').eq('status', 'Activo'),
     ]).then(([salesRes, productsRes, customersRes]) => {

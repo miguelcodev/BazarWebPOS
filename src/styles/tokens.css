@@ -213,18 +213,21 @@ a {
 }
 
 @media print {
-  body * {
-    visibility: hidden;
+  #root {
+    display: none;
   }
 
-  .receipt-print,
-  .receipt-print * {
-    visibility: visible;
+  .receipt-print-backdrop {
+    position: static;
+    inset: auto;
+    background: none;
+    display: block;
+    padding: 0;
   }
 
   .receipt-print {
-    position: absolute;
-    inset: 0;
+    width: 100%;
+    max-width: none;
     margin: 0;
     box-shadow: none;
     border-radius: 0;
